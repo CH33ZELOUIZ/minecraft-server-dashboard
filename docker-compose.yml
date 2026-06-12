@@ -1,0 +1,17 @@
+services:
+  minecraft-dashboard:
+    build: .
+    container_name: minecraft-dashboard
+    restart: unless-stopped
+    ports:
+      - "${DASHBOARD_PORT:-3011}:3011"
+    environment:
+      PORT: "3011"
+      MINECRAFT_CONTAINER: "${MINECRAFT_CONTAINER:-minecraft-server}"
+      DATA_ROOT: "/minecraft-data"
+      API_ALLOW_PRIVATE_ONLY: "${API_ALLOW_PRIVATE_ONLY:-1}"
+    volumes:
+      # Required so the dashboard can inspect/start/stop/restart the Minecraft container.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Mount the Minecraft server data directory read/write for logs, settings, file browser, and icon upload.
+      - ${MINECRAFT_DATA_PATH:-./minecraft-data}:/minecraft-data

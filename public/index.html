@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Minecraft Server Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/vendor/xterm/css/xterm.css">
+  <style>
+    :root{
+      --bg:#08090a;
+      --panel:#0f1011;
+      --panel-2:#17181c;
+      --panel-3:#1d1f24;
+      --border:rgba(255,255,255,.08);
+      --border-soft:rgba(255,255,255,.05);
+      --text:#f7f8f8;
+      --muted:#8a8f98;
+      --accent:#7170ff;
+      --accent-strong:#5e6ad2;
+      --good:#10b981;
+      --warn:#f59e0b;
+      --bad:#ef4444;
+    }
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
+    html,body{margin:0;min-height:100%;background:radial-gradient(circle at top,#141625 0,#08090a 45%);color:var(--text);font-family:Inter,system-ui,sans-serif;font-feature-settings:"cv01","ss03"}
+    body{padding:20px;padding-left:max(20px,env(safe-area-inset-left));padding-right:max(20px,env(safe-area-inset-right));padding-top:max(20px,env(safe-area-inset-top));padding-bottom:max(20px,env(safe-area-inset-bottom))}
+    .shell{max-width:1480px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+    .hero{display:flex;justify-content:space-between;align-items:flex-end;gap:18px;padding:6px 2px 0}
+    .hero h1{margin:0;font-size:clamp(28px,3.2vw,38px);line-height:1.02;letter-spacing:-.9px;font-weight:600}
+    .hero p{margin:8px 0 0;color:var(--muted);font-size:clamp(13px,1.15vw,15px);max-width:680px}
+    .hero-meta{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+    .mobile-nav{display:none}
+    .mobile-nav-card{position:sticky;top:10px;z-index:10;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
+    .mobile-nav-links{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+    .mobile-nav-links a{text-decoration:none;text-align:center;display:flex;align-items:center;justify-content:center;min-height:44px;border:1px solid var(--border);border-radius:12px;background:rgba(255,255,255,.03);color:var(--text);font-size:13px;font-weight:600}
+    .pill{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:999px;padding:8px 12px;background:rgba(255,255,255,.03);font-size:12px;color:#d0d6e0}
+    .dot{width:9px;height:9px;border-radius:999px;background:var(--muted);box-shadow:0 0 12px transparent}
+    .dot.running{background:var(--good);box-shadow:0 0 12px rgba(16,185,129,.75)}
+    .dot.stopped{background:var(--bad);box-shadow:0 0 12px rgba(239,68,68,.65)}
+    .grid{display:grid;grid-template-columns:minmax(320px,360px) minmax(0,1fr);gap:16px}
+    .stack{display:flex;flex-direction:column;gap:16px}
+    .panel{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:18px;padding:16px;box-shadow:rgba(0,0,0,.32) 0 10px 28px}
+    .panel h2{margin:0 0 14px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:#d0d6e0}
+    .panel-titlebar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+    .panel-titlebar h2{margin:0}
+    .panel-titlebar .subtle{margin-top:4px}
+    .settings-card{scroll-margin-top:84px}
+    .settings-actions{display:flex;justify-content:flex-end}
+    .section-note{color:var(--muted);font-size:13px;line-height:1.45}
+    .metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+    .metric{padding:12px;border:1px solid var(--border-soft);border-radius:14px;background:rgba(255,255,255,.02)}
+    .metric-label{font-size:11px;text-transform:uppercase;color:var(--muted);letter-spacing:.07em}
+    .metric-value{margin-top:7px;font-size:18px;font-weight:600;line-height:1.15;word-break:break-word}
+    .metric-sub{margin-top:6px;font-size:12px;color:var(--muted);white-space:pre-wrap}
+    .action-row,.command-row,.toolbar{display:flex;gap:10px;flex-wrap:wrap}
+    button,.btn-label{background:rgba(255,255,255,.03);border:1px solid var(--border);color:var(--text);border-radius:12px;padding:10px 13px;font:500 14px Inter,system-ui,sans-serif;cursor:pointer;min-height:42px;touch-action:manipulation}
+    button:hover,.btn-label:hover{border-color:rgba(113,112,255,.55);background:rgba(113,112,255,.1)}
+    button.primary{background:var(--accent-strong);border-color:var(--accent-strong)}
+    button.danger{border-color:rgba(239,68,68,.35);color:#fecaca}
+    button:disabled{opacity:.45;cursor:not-allowed}
+    .command-row input,.pathbar input,.editor-head input,.toolbar input{width:100%;background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:12px;padding:11px 13px;color:var(--text);font:500 16px JetBrains Mono,ui-monospace,monospace;min-height:44px}
+    .command-row input:focus,.pathbar input:focus,.editor textarea:focus,.editor-head input:focus,.field input:focus,.field select:focus,.field textarea:focus,.toolbar input:focus{outline:none;border-color:rgba(113,112,255,.6);box-shadow:0 0 0 4px rgba(113,112,255,.15)}
+    .mono{font-family:JetBrains Mono,ui-monospace,monospace}
+    .subtle{color:var(--muted);font-size:13px}
+    .output,.log-box{background:#050607;border:1px solid var(--border-soft);border-radius:14px;padding:12px;font:12px/1.5 JetBrains Mono,ui-monospace,monospace;white-space:pre-wrap;overflow:auto;-webkit-overflow-scrolling:touch}
+    .output{min-height:104px;max-height:220px}
+    .log-box{height:300px}
+    .terminal{height:380px;border:1px solid var(--border-soft);border-radius:16px;overflow:hidden;background:#050607;padding:10px}
+    .files-layout{display:grid;grid-template-columns:minmax(300px,340px) minmax(0,1fr);gap:16px}
+    .pathbar{display:flex;gap:10px;margin-bottom:12px}
+    .pathbar input{font-size:13px}
+    .files-list{border:1px solid var(--border-soft);border-radius:14px;overflow:hidden;background:rgba(255,255,255,.02);min-height:480px}
+    .file-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:center;padding:11px 14px;border-bottom:1px solid var(--border-soft);cursor:pointer}
+    .file-row:hover{background:rgba(113,112,255,.08)}
+    .file-row:last-child{border-bottom:none}
+    .file-name{font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .file-meta{font-size:12px;color:var(--muted)}
+    .dir-badge,.file-badge{font-size:11px;border-radius:999px;padding:4px 8px;border:1px solid var(--border-soft)}
+    .dir-badge{color:#c4b5fd}
+    .file-badge{color:#93c5fd}
+    .files-mobile-toggle{display:none}
+    .settings-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .field{display:flex;flex-direction:column;gap:8px}
+    .field label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+    .field input,.field select,.field textarea{width:100%;background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:12px;padding:12px 14px;color:var(--text);font:500 16px Inter,system-ui,sans-serif;min-height:46px}
+    .field textarea{min-height:96px;resize:vertical}
+    .check-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+    .check-item{display:flex;align-items:center;gap:10px;border:1px solid var(--border-soft);border-radius:12px;padding:12px;background:rgba(255,255,255,.02)}
+    .check-item input{width:18px;height:18px;margin:0}
+    .ops-list{display:flex;flex-direction:column;gap:10px}
+    .ops-item{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border-soft);border-radius:12px;background:rgba(255,255,255,.02)}
+    .ops-name{font-weight:600}
+    .ops-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px}
+    .ops-add{display:flex;gap:10px;flex:1;justify-content:flex-end}
+    .icon-card{display:flex;align-items:center;gap:14px;padding:12px;border:1px solid var(--border-soft);border-radius:14px;background:rgba(255,255,255,.02)}
+    .icon-preview{width:64px;height:64px;border-radius:16px;border:1px solid var(--border);background:rgba(255,255,255,.03);object-fit:cover;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px;text-align:center;overflow:hidden}
+    .icon-preview img{width:100%;height:100%;object-fit:cover;display:block}
+    .file-pane,.editor-pane{min-width:0}
+    .editor{display:flex;flex-direction:column;gap:12px}
+    .editor-head{display:flex;gap:10px;align-items:center}
+    .editor-head input{font-size:13px}
+    .editor textarea{width:100%;min-height:470px;resize:vertical;background:#050607;border:1px solid var(--border);border-radius:16px;padding:14px;color:var(--text);font:16px/1.5 JetBrains Mono,ui-monospace,monospace}
+    .statusline{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;color:var(--muted);font-size:12px}
+    .footer-note{color:var(--muted);font-size:12px}
+    .hidden{display:none!important}
+    .toast-stack{position:fixed;right:max(16px,env(safe-area-inset-right));bottom:max(16px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:10px;z-index:1000;max-width:min(420px,calc(100vw - 32px))}
+    .toast{background:rgba(8,9,10,.96);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:16px;padding:14px 16px;box-shadow:rgba(0,0,0,.4) 0 14px 32px;display:flex;flex-direction:column;gap:6px}
+    .toast.success{border-left-color:var(--good)}
+    .toast.warn{border-left-color:var(--warn)}
+    .toast-title{font-size:14px;font-weight:700}
+    .toast-body{font-size:13px;line-height:1.45;color:#d0d6e0}
+    @media (max-width:1200px){.grid{grid-template-columns:1fr}.files-layout{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media (max-width:720px){
+      body{padding:14px;padding-left:max(14px,env(safe-area-inset-left));padding-right:max(14px,env(safe-area-inset-right));padding-top:max(14px,env(safe-area-inset-top));padding-bottom:max(18px,env(safe-area-inset-bottom))}
+      .shell{gap:14px}
+      .hero{flex-direction:column;align-items:center;gap:12px;padding:0;text-align:center}
+      .hero h1{font-size:30px}
+      .hero p{font-size:14px;max-width:none}
+      .hero-meta{width:100%;justify-content:center}
+      .pill{width:100%;justify-content:center;min-height:44px;text-align:center}
+      .mobile-nav{display:block}
+      .metrics{grid-template-columns:1fr}
+      .settings-grid,.check-grid{grid-template-columns:1fr}
+      .command-row,.pathbar,.editor-head,.toolbar{flex-direction:column}
+      .action-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+      .action-row button,.toolbar button,.toolbar .btn-label,.pathbar button,.editor-head button,.command-row button{width:100%}
+      .grid,.files-layout{gap:14px}
+      .panel{padding:16px;border-radius:16px}
+      .panel h2{font-size:12px;text-align:center}
+      .panel-titlebar,.ops-toolbar,.settings-actions{flex-direction:column;align-items:center;text-align:center}
+      .panel-titlebar button,.settings-actions button{width:100%}
+      .section-note{text-align:center}
+      .metric,.check-item,.icon-card,.ops-item{text-align:center}
+      .metric-sub,.footer-note,.statusline{width:100%;text-align:center}
+      .ops-add{width:100%;flex-direction:column;justify-content:center}
+      .log-box{height:220px;font-size:12px}
+      .terminal{height:240px;padding:8px}
+      .files-list{min-height:280px;max-height:42vh;overflow:auto}
+      .file-row{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"name badge" "meta meta";align-items:start;padding:12px 14px}
+      .file-name{grid-area:name;white-space:normal;overflow-wrap:anywhere;line-height:1.35}
+      .dir-badge,.file-badge{grid-area:badge;align-self:center}
+      .file-meta{grid-area:meta}
+      .files-mobile-toggle{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:12px}
+      .files-mobile-toggle button{width:100%}
+      body[data-file-view="browser"] .editor-pane{display:none}
+      body[data-file-view="editor"] .file-pane{display:none}
+      .editor textarea{min-height:52vh}
+      .statusline{flex-direction:column;align-items:center}
+      .toast-stack{left:max(14px,env(safe-area-inset-left));right:max(14px,env(safe-area-inset-right));bottom:max(14px,env(safe-area-inset-bottom));max-width:none}
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="hero">
+      <div>
+        <h1>Minecraft Server Dashboard</h1>
+        <p>Your own control panel. Simple. Direct. Built for a Dockerized Minecraft server with logs, file access, shell, commands, and power controls.</p>
+      </div>
+      <div class="hero-meta">
+        <div class="pill"><span id="statusDot" class="dot"></span><span id="statusText">Loading…</span></div>
+        <div class="pill mono" id="startedAtPill">--</div>
+      </div>
+    </section>
+
+    <section class="mobile-nav">
+      <div class="panel mobile-nav-card">
+        <div class="mobile-nav-links">
+          <a href="#status-section">Status</a>
+          <a href="#settings-section">Settings</a>
+          <a href="#console-section">Console</a>
+          <a href="#files-section">Files</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid" id="status-section">
+      <div class="stack">
+        <div class="panel">
+          <h2>Server status</h2>
+          <div class="metrics">
+            <div class="metric"><div class="metric-label">Container</div><div id="metricContainer" class="metric-value mono">--</div><div id="metricHealth" class="metric-sub">--</div></div>
+            <div class="metric"><div class="metric-label">Players</div><div id="metricPlayers" class="metric-value">--</div><div id="metricPlayersSub" class="metric-sub">Player status not queried yet</div></div>
+            <div class="metric"><div class="metric-label">Version</div><div id="metricVersion" class="metric-value">--</div><div id="metricMotd" class="metric-sub">--</div></div>
+            <div class="metric"><div class="metric-label">Data path</div><div id="metricPath" class="metric-value mono">--</div><div class="metric-sub">Mounted Minecraft data folder</div></div>
+            <div class="metric"><div class="metric-label">Sleep mode</div><div id="metricSleepMode" class="metric-value">--</div><div id="metricSleepSub" class="metric-sub">--</div></div>
+            <div class="metric"><div class="metric-label">Join ports</div><div id="metricPorts" class="metric-value mono">--</div><div id="metricPortsSub" class="metric-sub">--</div></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Actions</h2>
+          <div class="action-row">
+            <button class="primary" id="startBtn" onclick="runAction('start')">Wake / Start</button>
+            <button onclick="runAction('restart')">Restart</button>
+            <button class="danger" id="stopBtn" onclick="runAction('stop')">Hard stop</button>
+            <button onclick="refreshAll()">Refresh</button>
+          </div>
+          <div id="actionsNote" class="footer-note" style="margin-top:12px">Wake / Start boots the container if it is fully off. Hard stop fully shuts the container down and disables join-to-wake until you start it again.</div>
+        </div>
+
+        <div class="panel">
+          <h2>Sleep mode details</h2>
+          <div id="sleepSummary" class="section-note">Loading sleep mode details…</div>
+          <div id="sleepTimeouts" class="footer-note" style="margin-top:10px">--</div>
+          <div id="sleepLastEvent" class="output" style="margin-top:12px;min-height:84px;max-height:180px">No sleep events yet.</div>
+        </div>
+
+        <div class="panel settings-card" id="settings-section">
+          <div class="panel-titlebar">
+            <div>
+              <h2>Server settings</h2>
+              <div class="section-note">Edit what the server shows players and how it behaves: MOTD, render distances, difficulty, icon, and ops.</div>
+            </div>
+            <div class="settings-actions">
+              <button onclick="saveSettings()">Save settings</button>
+            </div>
+          </div>
+          <div class="settings-grid">
+            <div class="field" style="grid-column:1/-1">
+              <label for="motdInput">Server name / MOTD</label>
+              <textarea id="motdInput" placeholder="What players see in the server list"></textarea>
+            </div>
+            <div class="field">
+              <label for="maxPlayersInput">Max players</label>
+              <input id="maxPlayersInput" type="number" min="1" max="999">
+            </div>
+            <div class="field">
+              <label for="gamemodeInput">Gamemode</label>
+              <select id="gamemodeInput">
+                <option value="survival">survival</option>
+                <option value="creative">creative</option>
+                <option value="adventure">adventure</option>
+                <option value="spectator">spectator</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="difficultyInput">Difficulty</label>
+              <select id="difficultyInput">
+                <option value="peaceful">peaceful</option>
+                <option value="easy">easy</option>
+                <option value="normal">normal</option>
+                <option value="hard">hard</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="spawnProtectionInput">Spawn protection</label>
+              <input id="spawnProtectionInput" type="number" min="0" max="128">
+            </div>
+            <div class="field">
+              <label for="viewDistanceInput">Render distance</label>
+              <input id="viewDistanceInput" type="number" min="2" max="32">
+            </div>
+            <div class="field">
+              <label for="simulationDistanceInput">Simulation distance</label>
+              <input id="simulationDistanceInput" type="number" min="2" max="32">
+            </div>
+          </div>
+          <div class="check-grid" style="margin-top:12px">
+            <label class="check-item"><input id="whiteListInput" type="checkbox"><span>Whitelist enabled</span></label>
+            <label class="check-item"><input id="pvpInput" type="checkbox"><span>PvP enabled</span></label>
+            <label class="check-item"><input id="onlineModeInput" type="checkbox"><span>Online mode</span></label>
+            <label class="check-item"><input id="allowFlightInput" type="checkbox"><span>Allow flight</span></label>
+          </div>
+          <div class="icon-card" style="margin-top:12px">
+            <div id="iconPreview" class="icon-preview">No icon</div>
+            <div class="stack" style="gap:10px;flex:1">
+              <div>
+                <div style="font-weight:600">Server icon</div>
+                <div class="subtle">Upload a PNG to use as the server list image.</div>
+              </div>
+              <div class="toolbar">
+                <label class="btn-label" for="iconInput">Upload icon</label>
+                <input id="iconInput" type="file" accept="image/png,image/*" class="hidden">
+              </div>
+            </div>
+          </div>
+          <div style="margin-top:12px">
+            <div class="ops-toolbar">
+              <h2 style="margin:0">Ops</h2>
+              <div class="ops-add">
+                <input id="opNameInput" placeholder="Player name">
+                <button onclick="addOp()">Add op</button>
+              </div>
+            </div>
+            <div id="opsList" class="ops-list"></div>
+          </div>
+          <div id="settingsStatus" class="footer-note" style="margin-top:12px">Settings load from server.properties and ops.json.</div>
+        </div>
+
+        <div class="panel">
+          <h2>Quick command</h2>
+          <div class="command-row">
+            <input id="commandInput" placeholder="say Server check" class="mono">
+            <button onclick="sendCommand()">Send</button>
+          </div>
+          <div id="commandOutput" class="output" style="margin-top:12px">No command sent yet.</div>
+        </div>
+      </div>
+
+      <div class="stack">
+        <div class="panel" id="console-section">
+          <div class="toolbar" style="justify-content:space-between;align-items:center;margin-bottom:12px">
+            <h2 style="margin:0">Live logs</h2>
+            <div class="toolbar">
+              <button onclick="loadLogs(200)">200 lines</button>
+              <button onclick="loadLogs(600)">600 lines</button>
+            </div>
+          </div>
+          <div id="logBox" class="log-box">Loading logs…</div>
+        </div>
+
+        <div class="panel">
+          <div class="toolbar" style="justify-content:space-between;align-items:center;margin-bottom:12px">
+            <h2 style="margin:0">Server shell</h2>
+            <div class="subtle mono">docker exec -it minecraft-server sh</div>
+          </div>
+          <div id="terminal" class="terminal"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="files-section">
+      <div class="toolbar" style="justify-content:space-between;align-items:center;margin-bottom:12px">
+        <h2 style="margin:0">Files</h2>
+        <div class="toolbar">
+          <label class="btn-label" for="uploadInput">Upload file</label>
+          <input id="uploadInput" type="file" class="hidden">
+          <button onclick="newFolder()">New folder</button>
+          <button onclick="reloadFiles()">Reload</button>
+        </div>
+      </div>
+      <div class="files-mobile-toggle">
+        <button id="browseTabBtn" type="button" onclick="setFileView('browser')">Browse</button>
+        <button id="editorTabBtn" type="button" onclick="setFileView('editor')">Editor</button>
+      </div>
+      <div class="files-layout">
+        <div class="file-pane">
+          <div class="pathbar">
+            <input id="pathInput" class="mono" value=".">
+            <button onclick="goPath()">Go</button>
+            <button onclick="goUp()">Up</button>
+          </div>
+          <div id="filesList" class="files-list"></div>
+        </div>
+        <div class="editor-pane">
+          <div class="editor">
+            <div class="editor-head">
+              <input id="editorPath" class="mono" placeholder="Select a file to open" readonly>
+              <button onclick="saveFile()">Save</button>
+              <button onclick="downloadFile()">Download</button>
+              <button onclick="renameFile()">Rename</button>
+              <button class="danger" onclick="deleteSelected()">Delete</button>
+            </div>
+            <textarea id="editorArea" spellcheck="false" placeholder="File contents will show here."></textarea>
+            <div class="statusline">
+              <div id="editorStatus">No file selected.</div>
+              <div>Root: <span class="mono">/minecraft-data</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+  <div id="toastStack" class="toast-stack" aria-live="polite" aria-atomic="true"></div>
+
+  <script src="/vendor/xterm/lib/xterm.js"></script>
+  <script src="/vendor/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+  <script>
+    const state = {
+      currentPath: '.',
+      currentFile: '',
+      term: null,
+      fitAddon: null,
+      socket: null,
+      logTimer: null,
+      statusTimer: null
+    };
+
+    function setText(id, value){ document.getElementById(id).textContent = value == null || value === '' ? '--' : value; }
+    function prettyTime(value){ if(!value) return '--'; const d = new Date(value); return isNaN(d) ? value : d.toLocaleString(); }
+    function escapeHtml(text){ return String(text).replace(/[&<>]/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[s])); }
+    function formatAutopauseState(autopause){
+      const state = autopause?.state || 'unknown';
+      if(state === 'players-online') return 'Awake';
+      if(state === 'sleep-mode-active') return 'Sleeping';
+      if(state === 'armed') return 'Armed';
+      if(state === 'container-stopped') return 'Off';
+      if(state === 'disabled') return 'Disabled';
+      return state;
+    }
+    function summarizePorts(portBindings=[]){
+      const parts = [];
+      for(const entry of portBindings){
+        if(entry.containerPort === '25565/tcp') parts.push(`Java ${entry.hostPort}`);
+        if(entry.containerPort === '19132/udp') parts.push(`Bedrock ${entry.hostPort}`);
+      }
+      return parts.length ? parts.join(' · ') : 'No mapped ports';
+    }
+    function showToast(title, message='', kind='success'){
+      const stack = document.getElementById('toastStack');
+      const toast = document.createElement('div');
+      toast.className = `toast ${kind}`;
+      toast.innerHTML = `<div class="toast-title">${escapeHtml(title)}</div>${message ? `<div class="toast-body">${escapeHtml(message)}</div>` : ''}`;
+      stack.appendChild(toast);
+      window.setTimeout(() => {
+        toast.style.transition = 'opacity .2s ease, transform .2s ease';
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(8px)';
+      }, 4200);
+      window.setTimeout(() => toast.remove(), 4500);
+    }
+    function restartHintForPath(filePath=''){
+      const name = String(filePath || '').split('/').pop() || '';
+      const restartFiles = new Set(['server.properties', 'server-icon.png', 'bukkit.yml', 'spigot.yml', 'paper-global.yml', 'paper-world-defaults.yml']);
+      return restartFiles.has(name) ? 'Restart the server for this change to fully take effect.' : '';
+    }
+    function isMobileLayout(){ return window.matchMedia('(max-width: 720px)').matches; }
+    function updateFileToggleButtons(){
+      const current = document.body.dataset.fileView || 'browser';
+      const browse = document.getElementById('browseTabBtn');
+      const editor = document.getElementById('editorTabBtn');
+      if(browse) browse.classList.toggle('primary', current === 'browser');
+      if(editor) editor.classList.toggle('primary', current === 'editor');
+    }
+    function setFileView(view){
+      document.body.dataset.fileView = view === 'editor' ? 'editor' : 'browser';
+      updateFileToggleButtons();
+    }
+
+    async function api(path, options={}){
+      const response = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...options });
+      const data = await response.json().catch(() => ({}));
+      if(!response.ok) throw new Error(data.error || 'Request failed');
+      return data;
+    }
+
+    async function loadStatus(){
+      const data = await api('/api/status');
+      const autopause = data.autopause || {};
+      const sleepState = formatAutopauseState(autopause);
+      const joinPorts = summarizePorts(data.portBindings || []);
+      const sleepSummary = autopause.enabled
+        ? (autopause.state === 'players-online'
+            ? 'Players are online, so the server should stay awake.'
+            : autopause.state === 'sleep-mode-active'
+              ? 'Sleep mode is active. The container stays up, but the Minecraft process is allowed to pause while empty.'
+              : autopause.state === 'container-stopped'
+                ? 'The container is fully stopped. Join-to-wake will not work until you start it again.'
+                : 'Sleep mode is enabled and waiting for the server to go idle.')
+        : 'Sleep mode is disabled. The server will stay fully awake until you stop it.';
+      const actionsNote = data.running
+        ? 'Wake / Start is only needed if you hard stop the container. Hard stop fully shuts the container down and disables join-to-wake until you start it again.'
+        : 'The container is off. Use Wake / Start to bring it back. While off, join-to-wake is unavailable.';
+      const lastEvent = [autopause.lastPauseLogLine, autopause.lastHealthOutput].filter(Boolean).join('\n\n') || 'No recent sleep event found in the latest status checks.';
+
+      document.getElementById('statusDot').className = 'dot ' + (data.running ? 'running' : 'stopped');
+      setText('statusText', data.running ? `Running · ${sleepState}` : 'Stopped');
+      setText('startedAtPill', (data.running ? 'Started: ' : 'Last start: ') + prettyTime(data.startedAt));
+      setText('metricContainer', data.serverName);
+      setText('metricHealth', 'Status: ' + (data.status || '--') + (data.health ? ' · Health: ' + data.health : ''));
+      setText('metricPlayers', data.playersOnline != null && data.maxPlayers != null ? `${data.playersOnline}/${data.maxPlayers}` : 'Unknown');
+      setText('metricPlayersSub', data.playerText || 'No player list available');
+      setText('metricVersion', data.version || 'Unknown');
+      setText('metricMotd', data.motd || 'No MOTD returned');
+      setText('metricPath', data.mountSource || '--');
+      setText('metricSleepMode', sleepState);
+      setText('metricSleepSub', autopause.enabled ? 'Auto-sleep is configured for this server.' : 'Auto-sleep is turned off.');
+      setText('metricPorts', joinPorts);
+      setText('metricPortsSub', 'Bedrock join uses UDP 19132. Java join uses TCP 25565.');
+      setText('actionsNote', actionsNote);
+      setText('sleepSummary', sleepSummary);
+      setText('sleepTimeouts', autopause.enabled
+        ? `Knock wait: ${autopause.timeouts?.knock || '--'}s · Empty grace: ${autopause.timeouts?.empty || '--'}s · Startup grace: ${autopause.timeouts?.init || '--'}s`
+        : 'Autopause env vars are not enabled for this container.');
+      document.getElementById('sleepLastEvent').textContent = lastEvent;
+      document.getElementById('startBtn').textContent = data.running ? 'Wake / Start' : 'Start container';
+      document.getElementById('stopBtn').textContent = data.running ? 'Hard stop' : 'Stopped';
+      document.getElementById('stopBtn').disabled = !data.running;
+      if(data.latestLog){
+        const box = document.getElementById('logBox');
+        if(!box.dataset.locked){ box.textContent = data.latestLog; box.scrollTop = box.scrollHeight; }
+      }
+    }
+
+    async function loadLogs(lines=200){
+      const data = await api('/api/logs?file=' + encodeURIComponent('logs/latest.log') + '&lines=' + lines);
+      const box = document.getElementById('logBox');
+      box.textContent = data.text || '(empty log)';
+      box.scrollTop = box.scrollHeight;
+    }
+
+    async function runAction(action){
+      const prompts = {
+        start: 'Start the minecraft-server container? This is needed only when the server was hard stopped.',
+        restart: 'Restart the minecraft-server container now?',
+        stop: 'Hard stop minecraft-server? This fully turns the container off until you start it again.'
+      };
+      if(!confirm(prompts[action] || `Run ${action} on minecraft-server?`)) return;
+      await api('/api/action', { method:'POST', body: JSON.stringify({ action }) });
+      await refreshAll();
+    }
+
+    async function sendCommand(){
+      const input = document.getElementById('commandInput');
+      const command = input.value.trim();
+      if(!command) return;
+      const out = document.getElementById('commandOutput');
+      out.textContent = 'Running…';
+      try {
+        const data = await api('/api/command', { method:'POST', body: JSON.stringify({ command }) });
+        out.textContent = data.output || '(no output)';
+      } catch (error) {
+        out.textContent = 'Error: ' + error.message;
+      }
+    }
+
+    function renderIcon(url){
+      const box = document.getElementById('iconPreview');
+      if(!url){ box.textContent = 'No icon'; return; }
+      box.innerHTML = `<img src="${url}?t=${Date.now()}" alt="Server icon">`;
+    }
+
+    function renderOps(ops){
+      const list = document.getElementById('opsList');
+      list.innerHTML = '';
+      if(!ops || !ops.length){
+        list.innerHTML = '<div class="ops-item"><div class="subtle">No ops configured.</div></div>';
+        return;
+      }
+      for(const op of ops){
+        const row = document.createElement('div');
+        row.className = 'ops-item';
+        row.innerHTML = `<div><div class="ops-name">${escapeHtml(op.name || 'unknown')}</div><div class="subtle">level ${escapeHtml(op.level ?? '?')}</div></div><button class="danger" type="button">Remove</button>`;
+        row.querySelector('button').onclick = () => removeOp(op.name || '');
+        list.appendChild(row);
+      }
+    }
+
+    async function loadSettings(){
+      const data = await api('/api/settings');
+      document.getElementById('motdInput').value = data.motd || '';
+      document.getElementById('maxPlayersInput').value = data.maxPlayers || '';
+      document.getElementById('gamemodeInput').value = data.gamemode || 'survival';
+      document.getElementById('difficultyInput').value = data.difficulty || 'easy';
+      document.getElementById('spawnProtectionInput').value = data.spawnProtection || '16';
+      document.getElementById('viewDistanceInput').value = data.viewDistance || '10';
+      document.getElementById('simulationDistanceInput').value = data.simulationDistance || '10';
+      document.getElementById('whiteListInput').checked = !!data.whiteList;
+      document.getElementById('pvpInput').checked = !!data.pvp;
+      document.getElementById('onlineModeInput').checked = !!data.onlineMode;
+      document.getElementById('allowFlightInput').checked = !!data.allowFlight;
+      renderIcon(data.iconUrl);
+      renderOps(data.ops || []);
+      document.getElementById('settingsStatus').textContent = 'Settings loaded.';
+    }
+
+    async function saveSettings(){
+      const payload = {
+        motd: document.getElementById('motdInput').value,
+        maxPlayers: document.getElementById('maxPlayersInput').value,
+        gamemode: document.getElementById('gamemodeInput').value,
+        difficulty: document.getElementById('difficultyInput').value,
+        spawnProtection: document.getElementById('spawnProtectionInput').value,
+        viewDistance: document.getElementById('viewDistanceInput').value,
+        simulationDistance: document.getElementById('simulationDistanceInput').value,
+        whiteList: document.getElementById('whiteListInput').checked,
+        pvp: document.getElementById('pvpInput').checked,
+        onlineMode: document.getElementById('onlineModeInput').checked,
+        allowFlight: document.getElementById('allowFlightInput').checked
+      };
+      document.getElementById('settingsStatus').textContent = 'Saving settings…';
+      try {
+        await api('/api/settings', { method:'POST', body: JSON.stringify(payload) });
+        document.getElementById('settingsStatus').textContent = 'Settings saved to server.properties.';
+        showToast('Saved', 'Settings were saved. Restart the server for these changes to fully take effect.', 'warn');
+        await Promise.allSettled([loadSettings(), loadStatus()]);
+      } catch (error) {
+        document.getElementById('settingsStatus').textContent = 'Error: ' + error.message;
+      }
+    }
+
+    async function uploadIconFile(file){
+      const form = new FormData();
+      form.append('icon', file);
+      document.getElementById('settingsStatus').textContent = 'Uploading icon…';
+      const response = await fetch('/api/settings/icon', { method:'POST', body: form });
+      const data = await response.json().catch(() => ({}));
+      if(!response.ok) throw new Error(data.error || 'Upload failed');
+      renderIcon(data.iconUrl || '/api/server-icon');
+      const source = data.sourceSize ? `${data.sourceSize.width}x${data.sourceSize.height}` : 'uploaded image';
+      document.getElementById('settingsStatus').textContent = `Server icon uploaded. Converted ${source} to 64x64 PNG for Minecraft.`;
+      showToast('Saved', 'Server icon uploaded. Restart the server for the new icon to show in Minecraft.', 'warn');
+    }
+
+    async function addOp(){
+      const input = document.getElementById('opNameInput');
+      const name = input.value.trim();
+      if(!name) return;
+      document.getElementById('settingsStatus').textContent = 'Adding op…';
+      try {
+        const data = await api('/api/settings/op', { method:'POST', body: JSON.stringify({ action:'add', name }) });
+        renderOps(data.ops || []);
+        input.value = '';
+        document.getElementById('settingsStatus').textContent = `Granted op to ${name}.`;
+      } catch (error) {
+        document.getElementById('settingsStatus').textContent = 'Error: ' + error.message;
+      }
+    }
+
+    async function removeOp(name){
+      if(!name) return;
+      if(!confirm(`Remove op from ${name}?`)) return;
+      document.getElementById('settingsStatus').textContent = 'Removing op…';
+      try {
+        const data = await api('/api/settings/op', { method:'POST', body: JSON.stringify({ action:'remove', name }) });
+        renderOps(data.ops || []);
+        document.getElementById('settingsStatus').textContent = `Removed op from ${name}.`;
+      } catch (error) {
+        document.getElementById('settingsStatus').textContent = 'Error: ' + error.message;
+      }
+    }
+
+    async function loadFiles(target='.'){
+      const data = await api('/api/files?path=' + encodeURIComponent(target));
+      state.currentPath = data.current;
+      document.getElementById('pathInput').value = data.current;
+      const list = document.getElementById('filesList');
+      list.innerHTML = '';
+      if(data.current !== '.'){
+        const up = document.createElement('div');
+        up.className = 'file-row';
+        up.innerHTML = `<div class="file-name">..</div><div class="dir-badge">parent</div><div class="file-meta"></div>`;
+        up.onclick = () => loadFiles(data.parent || '.');
+        list.appendChild(up);
+      }
+      for(const item of data.items){
+        const row = document.createElement('div');
+        row.className = 'file-row';
+        row.innerHTML = `
+          <div class="file-name">${escapeHtml(item.name)}</div>
+          <div class="${item.type === 'dir' ? 'dir-badge' : 'file-badge'}">${item.type}</div>
+          <div class="file-meta">${item.type === 'dir' ? '' : formatBytes(item.size)}</div>`;
+        row.onclick = () => item.type === 'dir' ? loadFiles(item.path) : openFile(item.path);
+        list.appendChild(row);
+      }
+      if(!data.items.length){
+        list.innerHTML = '<div class="file-row"><div class="file-name">Empty folder</div><div></div><div></div></div>';
+      }
+    }
+
+    function formatBytes(bytes){
+      const units = ['B','KB','MB','GB'];
+      let value = Number(bytes || 0);
+      let i = 0;
+      while(value >= 1024 && i < units.length - 1){ value /= 1024; i++; }
+      return `${value.toFixed(value >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
+    }
+
+    async function openFile(filePath){
+      const data = await api('/api/file?path=' + encodeURIComponent(filePath));
+      state.currentFile = data.path;
+      document.getElementById('editorPath').value = data.path;
+      document.getElementById('editorArea').value = data.content;
+      document.getElementById('editorStatus').textContent = `${formatBytes(data.size)} loaded`;
+      if(isMobileLayout()) setFileView('editor');
+    }
+
+    async function saveFile(){
+      if(!state.currentFile) return alert('Pick a file first.');
+      const content = document.getElementById('editorArea').value;
+      await api('/api/file/save', { method:'POST', body: JSON.stringify({ path: state.currentFile, content }) });
+      document.getElementById('editorStatus').textContent = 'Saved ' + state.currentFile;
+      const restartNote = restartHintForPath(state.currentFile);
+      showToast('Saved', restartNote || `Saved ${state.currentFile}.`, restartNote ? 'warn' : 'success');
+      await loadFiles(state.currentPath);
+    }
+
+    async function deleteSelected(){
+      const target = state.currentFile || state.currentPath;
+      if(!target || target === '.') return alert('Select a file or folder first.');
+      if(!confirm('Delete ' + target + '?')) return;
+      await api('/api/file/delete', { method:'POST', body: JSON.stringify({ path: target }) });
+      if(state.currentFile === target){
+        state.currentFile = '';
+        document.getElementById('editorPath').value = '';
+        document.getElementById('editorArea').value = '';
+        document.getElementById('editorStatus').textContent = 'Deleted.';
+      }
+      await loadFiles('.');
+    }
+
+    async function renameFile(){
+      const target = state.currentFile || state.currentPath;
+      if(!target || target === '.') return alert('Select a file or folder first.');
+      const next = prompt('Rename to:', target);
+      if(!next || next === target) return;
+      await api('/api/file/rename', { method:'POST', body: JSON.stringify({ from: target, to: next }) });
+      if(state.currentFile === target) state.currentFile = next;
+      await loadFiles(state.currentPath);
+      if(state.currentFile) await openFile(state.currentFile);
+    }
+
+    async function newFolder(){
+      const name = prompt('Folder name:', state.currentPath === '.' ? 'new-folder' : state.currentPath + '/new-folder');
+      if(!name) return;
+      await api('/api/file/mkdir', { method:'POST', body: JSON.stringify({ path: name }) });
+      await loadFiles(state.currentPath);
+    }
+
+    function goPath(){ loadFiles(document.getElementById('pathInput').value || '.'); }
+    function goUp(){ if(state.currentPath === '.') return; const parts = state.currentPath.split('/'); parts.pop(); setFileView('browser'); loadFiles(parts.join('/') || '.'); }
+    function reloadFiles(){ setFileView('browser'); loadFiles(state.currentPath); }
+
+    function downloadFile(){
+      if(!state.currentFile) return alert('Select a file first.');
+      window.location.href = '/api/file/download?path=' + encodeURIComponent(state.currentFile);
+    }
+
+    async function uploadSelected(file){
+      const form = new FormData();
+      form.append('file', file);
+      form.append('path', state.currentPath);
+      const response = await fetch('/api/file/upload', { method:'POST', body: form });
+      const data = await response.json().catch(() => ({}));
+      if(!response.ok) throw new Error(data.error || 'Upload failed');
+      await loadFiles(state.currentPath);
+    }
+
+    function initTerminal(){
+      const term = new Terminal({ cursorBlink:true, fontFamily:'JetBrains Mono, monospace', fontSize:13, theme:{ background:'#050607', foreground:'#f7f8f8' } });
+      const fitAddon = new FitAddon.FitAddon();
+      term.loadAddon(fitAddon);
+      term.open(document.getElementById('terminal'));
+      fitAddon.fit();
+      const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
+      const socket = new WebSocket(`${protocol}://${location.host}/ws/terminal`);
+      socket.onopen = () => socket.send(JSON.stringify({ type:'resize', cols:term.cols, rows:term.rows }));
+      socket.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+        if(message.type === 'data') term.write(message.data);
+        if(message.type === 'exit') term.write(`\r\n[terminal exited ${message.exitCode}]\r\n`);
+      };
+      term.onData(data => socket.readyState === 1 && socket.send(JSON.stringify({ type:'input', data })));
+      window.addEventListener('resize', () => {
+        fitAddon.fit();
+        if(socket.readyState === 1) socket.send(JSON.stringify({ type:'resize', cols:term.cols, rows:term.rows }));
+      });
+      state.term = term;
+      state.fitAddon = fitAddon;
+      state.socket = socket;
+    }
+
+    async function refreshAll(){
+      await Promise.allSettled([loadStatus(), loadLogs(), loadFiles(state.currentPath || '.'), loadSettings()]);
+    }
+
+    document.getElementById('uploadInput').addEventListener('change', async (event) => {
+      const file = event.target.files[0];
+      if(!file) return;
+      try { await uploadSelected(file); }
+      catch (error) { alert(error.message); }
+      event.target.value = '';
+    });
+
+    document.getElementById('iconInput').addEventListener('change', async (event) => {
+      const file = event.target.files[0];
+      if(!file) return;
+      try { await uploadIconFile(file); }
+      catch (error) { document.getElementById('settingsStatus').textContent = 'Error: ' + error.message; }
+      event.target.value = '';
+    });
+
+    document.getElementById('logBox').addEventListener('mouseenter', () => document.getElementById('logBox').dataset.locked = '1');
+    document.getElementById('logBox').addEventListener('mouseleave', () => delete document.getElementById('logBox').dataset.locked);
+    document.getElementById('commandInput').addEventListener('keydown', (event) => { if(event.key === 'Enter') sendCommand(); });
+    document.getElementById('opNameInput').addEventListener('keydown', (event) => { if(event.key === 'Enter') addOp(); });
+
+    setFileView('browser');
+    initTerminal();
+    refreshAll();
+    state.statusTimer = setInterval(() => loadStatus().catch(() => {}), 5000);
+    state.logTimer = setInterval(() => loadLogs().catch(() => {}), 5000);
+    window.addEventListener('resize', updateFileToggleButtons);
+  </script>
+</body>
+</html>
